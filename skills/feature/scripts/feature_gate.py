@@ -8,6 +8,8 @@ Project settings live in `.feature/config.toml`; see examples/config.example.tom
 """
 
 import argparse
+import datetime
+import hashlib
 import re
 import subprocess
 import sys
@@ -27,6 +29,7 @@ REQUIRED: dict[str, list[str]] = {
 METHODS = {"auto", "manual"}
 PLAN_MAX_LINES = 150
 PLAN_MAX_CODE_LINES = 5
+MAX_FAILS = 3  # consecutive failed runs before the gate itself escalates
 DEFAULT_CONFIG = {
     "base_branch": "main",
     "checks": {"commands": [], "known_failures": "", "timeout_sec": 600},
@@ -36,6 +39,7 @@ DEFAULT_CONFIG = {
 _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _BACKTICK = re.compile(r"`([^`\n]+)`")
 _LINE_SUFFIX = re.compile(r"(:\d+(-\d+)?|#L\d+(-L?\d+)?)$")
+_PLACEHOLDER = re.compile(r"[<>*{}$]")  # <new_id>, globs, templates: not a real path
 
 
 def load_config(root: Path = ROOT) -> dict:
@@ -70,12 +74,19 @@ def is_empty(body: str) -> bool:
     return not _COMMENT.sub("", body).strip()
 
 
-def artifact_paths(body: str) -> list[str]:
-    """Backticked paths with `:N`, `:N-M` and `#LN` suffixes removed."""
+def artifact_paths(body: str, slash_only: bool = False) -> list[str]:
+    """Backticked paths with `:N`, `:N-M` and `#LN` suffixes removed.
+
+    Placeholders and globs are skipped. `slash_only` accepts only tokens with a `/`: a bare
+    `Class.method` or `chat.json` looks like a file name but is not a checkable path.
+    """
     paths = []
-    for token in _BACKTICK.findall(body):
+    for token in _BACKTICK.findall(_COMMENT.sub("", body)):  # template hints are not content
         token = _LINE_SUFFIX.sub("", token.strip())
-        if ("/" in token and "://" not in token) or (" " not in token and re.search(r"\.\w+$", token)):
+        if _PLACEHOLDER.search(token):
+            continue
+        has_slash = "/" in token and "://" not in token
+        if has_slash or (not slash_only and " " not in token and re.search(r"\.\w+$", token)):
             paths.append(token)
     return paths
 
@@ -118,6 +129,13 @@ def check_sections(folder: Path, name: str, extra: list[str] | None = None) -> t
     return text, problems
 
 
+def split_cells(line: str) -> list[str]:
+    """Split a table row on `|`, except an escaped `\\|` or a `|` inside backticks."""
+    masked = re.sub(r"`[^`]*`", lambda m: m.group(0).replace("|", "\x00"), line)
+    parts = re.split(r"(?<!\\)\|", masked.strip("|"))
+    return [c.replace("\x00", "|").replace("\\|", "|").strip() for c in parts]
+
+
 def table_rows(body: str) -> list[list[str]]:
     """Data rows of a markdown table: header and separator rows dropped."""
     rows = []
@@ -125,7 +143,7 @@ def table_rows(body: str) -> list[list[str]]:
         line = line.strip()
         if not line.startswith("|"):
             continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = split_cells(line)
         if cells[0] == "id" or set("".join(cells)) <= set("-: "):
             continue
         rows.append(cells)
@@ -147,9 +165,13 @@ def check_research(folder: Path) -> list[str]:
         return problems
     for line in (section(text, "Affected files") or "").splitlines():
         if "edit" in line:
-            problems += [f"02-research.md: file not in repo: {p}" for p in artifact_paths(line) if not (ROOT / p).exists()]
+            problems += [f"02-research.md: file not in repo: {p}" for p in artifact_paths(line, True) if not (ROOT / p).exists()]
     docs = section(text, "Documents read") or ""
-    problems += [f"02-research.md: document not in repo: {p}" for p in artifact_paths(docs) if not (ROOT / p).exists()]
+    problems += [
+        f"02-research.md: document not in repo: {p} (paths are checked from the repo root; write identifiers without backticks)"
+        for p in artifact_paths(docs, True)
+        if not (ROOT / p).exists()
+    ]
     return problems
 
 
@@ -279,8 +301,19 @@ def outside_folder(files: list[str], folder: Path, repo: Path) -> list[str]:
 PREEXISTING = "preexisting.txt"
 
 
-def preexisting(folder: Path) -> set[str]:
-    return set((read(folder, PREEXISTING) or "").splitlines()) - {""}
+def digest(repo: Path, name: str) -> str:
+    path = repo / name
+    return hashlib.sha1(path.read_bytes()).hexdigest() if path.is_file() else "-"
+
+
+def preexisting(folder: Path) -> dict[str, str]:
+    """File → content hash at code-start (empty hash for a name-only line)."""
+    result = {}
+    for line in (read(folder, PREEXISTING) or "").splitlines():
+        if line:
+            name, _, sha = line.partition("\t")
+            result[name] = sha
+    return result
 
 
 def code_start(folder: Path, repo: Path = ROOT, cfg: dict | None = None) -> list[str]:
@@ -292,7 +325,7 @@ def code_start(folder: Path, repo: Path = ROOT, cfg: dict | None = None) -> list
         files = outside_folder(changed_files(cfg["base_branch"], repo), folder, repo)
     except GateError as exc:
         return [str(exc)]
-    (folder / PREEXISTING).write_text("".join(f"{f}\n" for f in files), encoding="utf-8")
+    (folder / PREEXISTING).write_text("".join(f"{f}\t{digest(repo, f)}\n" for f in files), encoding="utf-8")
     return []
 
 
@@ -347,10 +380,13 @@ def check_code(folder: Path, repo: Path = ROOT) -> tuple[list[str], int]:
         return [str(exc)], 1
     if not (folder / PREEXISTING).exists():
         return [f"no {PREEXISTING}: run code-start at the beginning of Code"], 1
-    # ponytail: an agent edit to a file that was already dirty hides here; start Code on a clean tree
-    files = [f for f in outside_folder(files, folder, repo) if f not in preexisting(folder)]
+    pre = preexisting(folder)  # a file dirty before Code counts again once its content changed
+    files = [f for f in outside_folder(files, folder, repo) if f not in pre or (pre[f] and digest(repo, f) != pre[f])]
     if not files:
-        return ["empty diff: the agent has changed nothing yet"], 1
+        return [
+            "empty diff: the agent has changed nothing yet. Files ignored by .gitignore are invisible "
+            "to this gate — check those by hand with the project's own commands"
+        ], 1
 
     _, allowed = research_files(folder)
     outside = [f"ESCALATE: {f} is outside research «Affected files»" for f in files if f not in allowed]
@@ -408,6 +444,30 @@ CHECKS = {
 }
 
 
+def log_run(folder: Path, phase: str, code: int, problems: list[str]) -> int:
+    """Append the run to `## History` and keep `fails:`; the third failure in a row escalates to 2."""
+    state = folder / "STATE.md"
+    if not state.exists():
+        return code
+    try:
+        fails = int(state_value(folder, "fails") or 0)
+    except ValueError:
+        fails = 0
+    if code == 1:
+        fails += 1
+        if fails >= MAX_FAILS:
+            code = 2
+            problems.insert(0, f"ESCALATE: {fails} failed {phase} runs in a row — stop and show the user the last violations")
+    elif code == 0:
+        fails = 0
+    set_state(folder, "fails", str(fails))
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    first = problems[0][:100] if problems else "-"
+    with state.open("a", encoding="utf-8") as fh:
+        fh.write(f"{stamp} | {phase} | {code} | {first}\n")
+    return code
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("phase", choices=sorted([*CHECKS, "triage", "code"]))
@@ -420,6 +480,7 @@ def main(argv: list[str]) -> int:
     else:
         problems = CHECKS[args.phase](args.feature_dir)
         code = 1 if problems else 0
+    code = log_run(args.feature_dir, args.phase, code, problems)
     sys.stdout.writelines(f"{problem}\n" for problem in problems)
     return code
 

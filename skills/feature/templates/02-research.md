@@ -1,10 +1,11 @@
 # Research: <feature name>
 
 ## Documents read
-<!-- `path` — what was taken; only from the project's docs map and the code -->
+<!-- `path/from/repo/root.md` — what was taken. Backticks only around paths that exist; write identifiers (Class.method) and file names without a directory in plain text -->
 
 ## Affected files
-<!-- one per line: - `path` — edit | new. The code gate lets only these files through -->
+<!-- one per line: - `path` — edit | new. The code gate lets only these files through.
+     Include the tests, stubs and fixtures of every touched module, and real names for new files (no <placeholders>). -->
 
 ## Signature dump
 <!-- real code pasted from the repo, not a retelling: signatures, field types, the read side of every new field -->

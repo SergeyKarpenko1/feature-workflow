@@ -68,13 +68,13 @@ Copy a phase's template into `F` **when the phase starts**, never all at once
 
 ## Gate loop (every phase)
 
-After writing a phase artifact run `G`. Append a line to `## History` of `STATE.md`.
-- `0` → set `phase:` to the next phase, `fails: 0`.
-- `1` → fix the artifact, rerun; `fails:` +1. At `3` stop and show the user the last
-  violations.
-- `2` → stop. Show the `ESCALATE:` lines and offer exactly two options: «fix in code»
-  or «go back to Design». Never pick one yourself and never change the design from
-  inside Code.
+After writing a phase artifact run `G`. The gate itself appends the run to `## History`
+and maintains `fails:` — never edit those by hand.
+- `0` → set `phase:` to the next phase.
+- `1` → fix the artifact, rerun. The third failure in a row comes back as `2`.
+- `2` → stop. Show the `ESCALATE:` lines. For a scope or cycle escalation offer exactly
+  two options: «fix in code» or «go back to Design»; for three failed runs show the last
+  violations and ask. Never pick one yourself and never change the design from inside Code.
 
 ## Phases
 
@@ -123,7 +123,9 @@ user pastes the card.
 ### Research
 Dispatch one read-only subagent (`model: sonnet`) with: `01-enrich.md`, the project's
 rules/docs map (`CLAUDE.md` or `AGENTS.md`), and the template `02-research.md`. It
-returns the artifact text; you write it. For a bug, «Cause» comes with a trace/log id
+returns the artifact text; you write it. «Affected files» lists the tests, stubs and
+fixtures of every touched module too: a file outside the list escalates in Code. Put
+backticks only around real paths from the repo root. For a bug, «Cause» comes with a trace/log id
 and one `### Option N` per fix option.
 
 ### Triage
@@ -199,5 +201,8 @@ The user commits. After the merge, propose updates to the docs the change touche
   snapshot or `preexisting.txt` while the workflow runs: `G code` does not see those
   files, so changing them would rewrite the rules mid-game.
   `G approve-acceptance` runs once; a new snapshot needs the user to delete the old one.
+- Never prefix a command with `cd` to the project root (you are already there) and
+  search only inside explicit directories, never `.` or the repo root — security hooks
+  block both, and every block costs a call.
 - Judges and Research are subagents and never edit files. Code runs in the main session.
 - No commits, no pushes, no MR from inside the workflow.

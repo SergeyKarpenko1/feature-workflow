@@ -76,3 +76,45 @@ def test_code_gate_scope_escalates_and_checks_run(tmp_path):
     (tmp_path / ".feature/config.toml").write_text('[checks]\ncommands = ["exit 1"]\n')
     problems, code = g.check_code(folder, tmp_path)
     assert code == 1 and "failed" in problems[0]
+
+
+def test_bare_identifiers_and_placeholders_are_not_paths():
+    body = "`CorpusIndex.load` `chat.json` `src/<new_id>.py` `a/*.py` `README.md` `docs/x.md`"
+    assert g.artifact_paths(body, slash_only=True) == ["docs/x.md"]
+
+
+def test_pipe_in_cell_does_not_split_columns():
+    row = "| C1 | match `a|b` and x\\|y | auto | ≥ 9 |"
+    assert g.table_rows(row) == [["C1", "match `a|b` and x|y", "auto", "≥ 9"]]
+
+
+def test_dirty_file_edited_later_is_seen_and_third_fail_escalates(tmp_path):
+    def git(*a):
+        subprocess.run(["git", *a], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "a.py").write_text("1\n")
+    git("add", ".")
+    git("commit", "-m", "init")
+    git("switch", "-c", "feature/x")
+    (tmp_path / "a.py").write_text("dirty before\n")
+    folder = tmp_path / "F"
+    folder.mkdir()
+    (folder / "02-research.md").write_text("## Affected files\n- `a.py` — edit\n")
+    assert g.code_start(folder, tmp_path) == []
+    problems, code = g.check_code(folder, tmp_path)
+    assert code == 1 and "empty diff" in problems[0]
+    (tmp_path / "a.py").write_text("edited by agent\n")
+    assert g.check_code(folder, tmp_path) == ([], 0)  # no configured commands: passes
+
+    (folder / "STATE.md").write_text("fails: 0\n\n## History\n")
+    codes = [g.log_run(folder, "plan", 1, ["x"]) for _ in range(3)]
+    assert codes == [1, 1, 2]
+    assert g.state_value(folder, "fails") == "3"
+    assert (folder / "STATE.md").read_text().count("| plan |") == 3
+
+
+def test_comment_hints_are_not_paths():
+    assert g.artifact_paths("<!-- `path/from/root.md` --> `docs/x.md`", slash_only=True) == ["docs/x.md"]
