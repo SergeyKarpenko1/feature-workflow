@@ -1,0 +1,10 @@
+{
+  "name": "feature-workflow",
+  "version": "0.1.0",
+  "description": "Phased feature/bugfix workflow for coding agents: a deterministic gate after every phase, cross-model judges, a human only at fixed decision points.",
+  "author": { "name": "Sergey Karpenko", "url": "https://github.com/SergeyKarpenko1" },
+  "homepage": "https://github.com/SergeyKarpenko1/feature-workflow",
+  "repository": "https://github.com/SergeyKarpenko1/feature-workflow",
+  "license": "MIT",
+  "keywords": ["workflow", "agents", "gates", "code-review", "claude-code"]
+}

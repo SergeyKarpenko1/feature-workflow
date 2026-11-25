@@ -1,0 +1,11 @@
+{
+  "name": "feature-workflow",
+  "owner": { "name": "Sergey Karpenko", "url": "https://github.com/SergeyKarpenko1" },
+  "plugins": [
+    {
+      "name": "feature-workflow",
+      "source": "./",
+      "description": "Phased feature/bugfix workflow with deterministic gates, cross-model judges and human decisions only at fixed points."
+    }
+  ]
+}
