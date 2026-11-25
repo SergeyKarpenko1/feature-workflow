@@ -2,11 +2,11 @@
 
 > **Выполнение:** задачи идут по одной, код пишется в чате; в файлы — только по явной команде автора. Субагентов, правящих файлы, не запускать. Шаги отмечаются чекбоксами (`- [ ]`).
 
-**Goal:** универсальный плагин `feature-workflow`: ядро (процесс, гейты, охранник, судьи, шаблоны, конфиг проекта) и адаптеры для Claude Code, Codex CLI и (экспериментально) Antigravity CLI.
+**Goal:** универсальный плагин `feature-workflow`: ядро (процесс, гейты, охранник, судьи, шаблоны, конфиг проекта) и адаптеры для Claude Code и Codex CLI.
 
 **Architecture:** ядро в `core/` не знает ни вендора, ни проекта: всё проектное — в `.feature/config.toml` пользователя, всё вендорное — в `adapters/<agent>/`, которые собирает `scripts/build_adapters.py`. Скрипты — Python stdlib; судьи — промпты + внешняя или нативная команда.
 
-**Tech Stack:** Python ≥ 3.11 (stdlib, `tomllib`), pytest через `uv run --with pytest`, bash для примеров, манифесты плагинов Claude Code / Codex / Antigravity, GitHub Actions.
+**Tech Stack:** Python ≥ 3.11 (stdlib, `tomllib`), pytest через `uv run --with pytest`, bash для примеров, манифесты плагинов Claude Code / Codex, GitHub Actions.
 
 **Spec:** `docs/design.md`
 
@@ -14,7 +14,7 @@
 
 - Репозиторий: `~/projects/feature-workflow`, ветка `main`, лицензия MIT.
 - Скрипты `core/scripts/*` — только stdlib, Python ≥ 3.11; зависимостей в рантайме нет.
-- Ни одного слова, пути, имени или доменного примера исходного проекта. После каждой задачи: `python3 scripts/check_clean.py --denylist ~/.config/feature-workflow/denylist.txt` → пусто (Task 13; до неё — тот же поиск вручную). Список запрещённых слов в репозиторий не кладётся. Файл списка автор создаёт **до Task 1** (без него проверка «после каждой задачи» невыполнима); агент предлагает черновик в чате.
+- Ни одного слова, пути, имени или доменного примера исходного проекта. После каждой задачи: `python3 scripts/check_clean.py --denylist ~/.config/feature-workflow/denylist.txt` → пусто (Task 12; до неё — тот же поиск вручную). Список запрещённых слов в репозиторий не кладётся. Файл списка автор создаёт **до Task 1** (без него проверка «после каждой задачи» невыполнима); агент предлагает черновик в чате.
 - Исходная локальная версия (у автора в его рабочем проекте: `.claude/skills/feature/`, `.claude/agents/*-judge.md`, спека процесса) — функциональная спецификация: читать можно, копировать строки нельзя.
 - Frontmatter `SKILL.md`: только `name` и `description`.
 - Коды выхода: гейт `0` прошло / `1` провал / `2` эскалация; `judge.py` `0` pass / `1` fail / `3` ошибка запуска; `guard.py` — по формату агента (§5.4 спеки).
@@ -37,14 +37,14 @@
 |---|---|
 | `core/scripts/fw_config.py` | загрузка и проверка `.feature/config.toml` |
 | `core/scripts/feature_gate.py` | гейты фаз, triage, code-start, approve, run-verify |
-| `core/scripts/guard.py` | охранник секретов и защищённых файлов, три формата ответа |
+| `core/scripts/guard.py` | охранник секретов и защищённых файлов, формат ответа Claude/Codex |
 | `core/scripts/judge.py` | запуск судьи по команде из конфига, разбор вердикта |
 | `core/judges/{design,arch}.md`, `verdict.schema.json` | промпты судей и схема вердикта |
 | `core/templates/{ru,en}/*` | шаблоны артефактов и `STATE.md` |
 | `core/skills/feature/SKILL.md`, `core/skills/feature-init/SKILL.md` | процесс и настройка |
 | `core/tests/*` | pytest на скрипты |
 | `scripts/build_adapters.py`, `scripts/check_clean.py` | сборка адаптеров, проверка чистоты |
-| `adapters/{claude,codex,antigravity}/…`, `.claude-plugin/marketplace.json` | манифесты и обвязка |
+| `adapters/{claude,codex}/…`, `.claude-plugin/marketplace.json` | манифесты и обвязка |
 | `examples/…`, `docs/{config,vendors,how-it-works}.md`, `README.md`, `LICENSE`, `.github/workflows/ci.yml` | примеры, документация, CI |
 
 ---
@@ -54,7 +54,7 @@
 **Files:** Create `core/scripts/fw_config.py`, `core/tests/test_config.py`, `examples/config.example.toml`, `LICENSE` (MIT, `SergeyKarpenko1`), `.gitignore`.
 
 **Interfaces — Produces:**
-- `@dataclass Config`: `language: str`, `base_branch: str`, `test: TestCommand | None`, `lint: str | None`, `triage: list[TriageRule]`, `max_short_files: int` (3), `layers: dict[str, list[str]]`, `domains: dict[str, list[str]]`, `knowledge: list[str]`, `secrets: SecretRules`, `deploy: Deploy | None`, `verify: dict[str, str]`, `models: dict[str, str]`, `judges: JudgeConfig`, `agent: str | None` (информационное: `claude`, `codex`, `antigravity` или другое имя; пишет `/feature-init`), `tracker: Tracker`, `timeout_sec: int` (600, из `[commands] timeout_sec`; общий лимит для тестов, команд `[verify]` и health-проверки).
+- `@dataclass Config`: `language: str`, `base_branch: str`, `test: TestCommand | None`, `lint: str | None`, `triage: list[TriageRule]`, `max_short_files: int` (3), `layers: dict[str, list[str]]`, `domains: dict[str, list[str]]`, `knowledge: list[str]`, `secrets: SecretRules`, `deploy: Deploy | None`, `verify: dict[str, str]`, `models: dict[str, str]`, `judges: JudgeConfig`, `agent: str | None` (информационное: `claude`, `codex` или другое имя; пишет `/feature-init`), `tracker: Tracker`, `timeout_sec: int` (600, из `[commands] timeout_sec`; общий лимит для тестов, команд `[verify]` и health-проверки).
 - `TestCommand(command: str, failure_regex: str, summary_regex: str, ok_codes: list[int], known_failures: str | None)` (`known_failures` — файл с уже известными падениями тестов; не путать со снимком «до» у Verify); по умолчанию — значения для pytest: `^(?:FAILED|ERROR) (?P<id>\S+)`, `\b\d+ (passed|failed)\b`, `[0, 1]`.
 - `TriageRule(name: str, paths: list[str], reason: str)`; `SecretRules(read_globs: list[str], command_regexes: list[str], protected_writes: list[str])` — у `protected_writes` всегда есть `.feature/config.toml`, `**/*.approved.md`, `**/preexisting.txt`.
 - `Deploy(start: str, health: str, stop: str)`; `JudgeConfig(mode: str = "native", design: str | None, arch: str | None)`; `Tracker(kind: str = "none", task_card: bool = False)` — `kind` свободное имя трекера задач (`jira`, `linear`, любое другое) или `none`; раздел `[tracker]` необязателен.
@@ -114,11 +114,11 @@
 
 **Files:** Create `core/scripts/guard.py`, `core/tests/test_guard.py`.
 
-**Interfaces — Produces:** `decide(payload: dict, rules: SecretRules) -> str | None` (причина запрета или `None`); `extract(payload: dict) -> tuple[str, str | None, str | None]` (имя инструмента, команда, путь) для трёх форматов: Claude/Codex (`tool_name`, `tool_input.command|file_path`), Antigravity (`toolCall.name`, `toolCall.args`); CLI `guard.py --format claude|codex|antigravity [--root DIR]`, читает stdin. Корень проекта — `payload["cwd"]`, `--root` его перекрывает. Нет или битый `.feature/config.toml` → применяются умолчания и пишется предупреждение в stderr (охранник не падает и не блокирует всё подряд).
+**Interfaces — Produces:** `decide(payload: dict, rules: SecretRules) -> str | None` (причина запрета или `None`); `extract(payload: dict) -> tuple[str, str | None, str | None]` (имя инструмента, команда, путь) для формата Claude/Codex (`tool_name`, `tool_input.command|file_path`); CLI `guard.py --format claude|codex [--root DIR]`, читает stdin. Корень проекта — `payload["cwd"]`, `--root` его перекрывает. Нет или битый `.feature/config.toml` → применяются умолчания и пишется предупреждение в stderr (охранник не падает и не блокирует всё подряд).
 
-Умолчания правил (дополняются конфигом): чтение `.env`, `.env.*`, `*.pem`, `id_rsa*`; команды-читатели рядом с этими путями; `printenv`/`env` целиком; `/proc/*/environ`; `docker … inspect|logs`, `docker-compose … logs`; `docker exec … env|printenv`; рекурсивный `grep|rg` по `.`; запись в `protected_writes` — **только инструментами записи с `file_path`** (Write/Edit и аналоги, путь сравнивается через `glob_match`). Запись через Bash (`>`, `>>`, `tee`, `sed -i`) не перехватывается: это сознательная граница, она проговаривается в README. Ответ: `claude`/`codex` — exit 2, причина в stderr; `antigravity` — stdout `{"decision":"deny","reason":…}`, exit 0. Битый JSON — exit 0, предупреждение в stderr.
+Умолчания правил (дополняются конфигом): чтение `.env`, `.env.*`, `*.pem`, `id_rsa*`; команды-читатели рядом с этими путями; `printenv`/`env` целиком; `/proc/*/environ`; `docker … inspect|logs`, `docker-compose … logs`; `docker exec … env|printenv`; рекурсивный `grep|rg` по `.`; запись в `protected_writes` — **только инструментами записи с `file_path`** (Write/Edit и аналоги, путь сравнивается через `glob_match`). Запись через Bash (`>`, `>>`, `tee`, `sed -i`) не перехватывается: это сознательная граница, она проговаривается в README. Ответ: exit 2, причина в stderr. Битый JSON — exit 0, предупреждение в stderr.
 
-- [ ] **Step 1: Tests:** таблица случаев из самопроверки локальной версии (23 строки, переписанных на вымышленные имена) × три формата; `test_protected_config_write_denied`; `test_protected_write_at_repo_root_denied` (`preexisting.txt`, `x.approved.md` в корне); `test_bash_redirect_to_protected_not_blocked` (фиксирует границу: команда `echo > .feature/config.toml` проходит); `test_missing_config_uses_defaults_with_warning`; `test_root_taken_from_payload_cwd`; `test_malformed_payload_allows_with_warning` (Review Focus 3); `test_antigravity_camelcase_payload`.
+- [ ] **Step 1: Tests:** таблица случаев из самопроверки локальной версии (23 строки, переписанных на вымышленные имена) × два формата; `test_protected_config_write_denied`; `test_protected_write_at_repo_root_denied` (`preexisting.txt`, `x.approved.md` в корне); `test_bash_redirect_to_protected_not_blocked` (фиксирует границу: команда `echo > .feature/config.toml` проходит); `test_missing_config_uses_defaults_with_warning`; `test_root_taken_from_payload_cwd`; `test_malformed_payload_allows_with_warning` (Review Focus 3).
 - [ ] **Step 2: RED.** `uv run --with pytest pytest core/tests/test_guard.py -q`.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: GREEN.**
@@ -131,7 +131,7 @@
 - Consumes: `Config.judges`, `Config.knowledge`.
 - Produces: `build_prompt(kind: str, folder: Path, cfg: Config, diff: Path | None) -> str`; `extract_verdict(stdout: str, out_file: Path | None) -> dict` (ищет `structured_output` в JSON-конверте, иначе JSON из `out_file`, иначе последний ```json-блок); `validate_verdict(v: dict) -> list[str]`; CLI `judge.py design|arch <folder> [--diff FILE] [--cycle full|short]`.
 
-Шаблон команды в конфиге — строка с `{prompt_file}`, `{schema_file}`, `{out_file}`; `judge.py` подставляет значения через `shlex.quote` и запускает команду с `shell=True` (шаблон содержит перенаправление `<`; пути могут содержать пробелы); в `examples/config.example.toml` три готовых шаблона из спеки §3 (`claude -p --bare …`, `codex exec -s read-only --output-schema {schema_file} -o {out_file} - < {prompt_file}`, `agy -p … --json-schema {schema_file} --output-format json`). Промпты судей — общие проверки спеки §5.3; поиск по репо только явными путями из `cfg.knowledge` и исходных каталогов, никогда по `.`.
+Шаблон команды в конфиге — строка с `{prompt_file}`, `{schema_file}`, `{out_file}`; `judge.py` подставляет значения через `shlex.quote` и запускает команду с `shell=True` (шаблон содержит перенаправление `<`; пути могут содержать пробелы); в `examples/config.example.toml` два готовых шаблона из спеки §3 (`claude -p --bare …`, `codex exec -s read-only --output-schema {schema_file} -o {out_file} - < {prompt_file}`). Промпты судей — общие проверки спеки §5.3; поиск по репо только явными путями из `cfg.knowledge` и исходных каталогов, никогда по `.`.
 
 - [ ] **Step 1: Tests** с `fake_cli.py` (печатает заданный конверт): `test_claude_style_envelope`, `test_codex_out_file`, `test_fenced_json_fallback`, `test_invalid_verdict_is_error_code_3`, `test_fail_iff_blocker`, `test_prompt_has_no_root_search` (в собранном промпте нет `grep -r … .`), `test_paths_with_spaces` (`tmp_path` с пробелом в имени, `fake_cli.py` читает файл по этому пути).
 - [ ] **Step 2: RED.** `uv run --with pytest pytest core/tests/test_judge.py -q`.
@@ -142,7 +142,7 @@
 
 **Files:** Create `core/skills/feature/SKILL.md`, `core/skills/feature-init/SKILL.md`, `core/tests/test_skills.py`.
 
-`feature/SKILL.md` — процесс по спеке §5.1 и локальной версии, на английском, с плейсхолдером `{{FW_ROOT}}` для путей к скриптам и шаблонам (подставляет Task 8). Встроенные разделы «Interview (Enrich)» и «Signature dump (Research)». Первый запуск: если нет `.feature/config.toml`, скилл сначала запускает `feature-init`, и только потом Enrich. Карточка задачи: при `tracker.task_card = true` после прохождения гейта Enrich скилл выдаёт в чат (на языке `language`) название и описание задачи для трекера (проблема, что делаем, откат, критерии приёмки), собранные из `01-enrich.md`; имя ветки выдаётся на старте, как и раньше. В трекер агент ничего не пишет. Модели — из `cfg.models` (`decide`/`check`), судьи — `judge.py` или нативный сабагент по `cfg.judges.mode`. `feature-init/SKILL.md` — шаги спеки §7, выдаёт блок правил запрета секретов для агента пользователя. Спрашивает: (1) агента, если не определился по окружению (Claude Code, Codex CLI, Antigravity или другой; для «другого» говорит, что хука охранника и готовых скиллов нет); (2) трекер задач (Jira, Linear, GitHub Issues, другой или нет); (3) только если трекер есть — нужна ли карточка задачи перед каждой фичей. Ответы пишет в `agent` и `[tracker]` конфига.
+`feature/SKILL.md` — процесс по спеке §5.1 и локальной версии, на английском, с плейсхолдером `{{FW_ROOT}}` для путей к скриптам и шаблонам (подставляет Task 8). Встроенные разделы «Interview (Enrich)» и «Signature dump (Research)». Первый запуск: если нет `.feature/config.toml`, скилл сначала запускает `feature-init`, и только потом Enrich. Карточка задачи: при `tracker.task_card = true` после прохождения гейта Enrich скилл выдаёт в чат (на языке `language`) название и описание задачи для трекера (проблема, что делаем, откат, критерии приёмки), собранные из `01-enrich.md`; имя ветки выдаётся на старте, как и раньше. В трекер агент ничего не пишет. Модели — из `cfg.models` (`decide`/`check`), судьи — `judge.py` или нативный сабагент по `cfg.judges.mode`. `feature-init/SKILL.md` — шаги спеки §7, выдаёт блок правил запрета секретов для агента пользователя. Спрашивает: (1) агента, если не определился по окружению (Claude Code, Codex CLI или другой; для «другого» говорит, что хука охранника и готовых скиллов нет); (2) трекер задач (Jira, Linear, GitHub Issues, другой или нет); (3) только если трекер есть — нужна ли карточка задачи перед каждой фичей. Ответы пишет в `agent` и `[tracker]` конфига.
 
 - [ ] **Step 1: Tests:** `test_frontmatter_portable` (ключи ⊆ `{name, description}`); `test_every_script_reference_exists` (каждый `{{FW_ROOT}}/…` указывает на файл в `core/`); `test_feature_skill_runs_init_when_no_config` (в теле `feature/SKILL.md` описан первый запуск: нет `.feature/config.toml` → `feature-init`); `test_init_asks_agent_and_tracker` (в `feature-init/SKILL.md` есть вопросы про агента, трекер и карточку задачи); `test_no_vendor_only_tool_names` (в теле нет имён инструментов в обратных кавычках — регулярка `` `(Agent|Skill|TodoWrite)` `` — только описания действий; слово «Agent» в обычном тексте допустимо).
 - [ ] **Step 2: RED → Step 3: Implement → Step 4: GREEN.** `uv run --with pytest pytest core/tests/test_skills.py -q`.
@@ -168,38 +168,30 @@ Claude: `{{FW_ROOT}}` → `${CLAUDE_PLUGIN_ROOT}`; судьи-агенты бе�
 - [ ] **Step 3: Test** `test_codex_build_check` в `core/tests/test_build.py` → GREEN.
 - [ ] **Step 4: Local install.** Автор: `codex plugin marketplace add ~/projects/feature-workflow`, `/plugins` → установлен, скилл виден в `/skills`.
 
-### Task 10: Адаптер Antigravity CLI (экспериментальный)
-
-**Files:** Create `adapters/antigravity/plugin.json`, `adapters/antigravity/agents/{design-judge,arch-judge}.md` (`tools` без записи, `model: pro`), `adapters/antigravity/hooks.json`.
-
-- [ ] **Step 1: Build** с хуком `guard.py --format antigravity`; в манифесте и README пометка «experimental».
-- [ ] **Step 2: Test** `test_antigravity_build_check` → GREEN.
-- [ ] **Step 3: Validate.** Если `agy` установлен — `agy plugin validate adapters/antigravity`; если нет — `Ruling:` в журнале, сквозной проверки нет (решение автора).
-
-### Task 11: Примеры
+### Task 10: Примеры
 
 **Files:** Create `examples/sample-project/` (маленькое приложение на Python: `app/`, `tests/`, `migrations/`, `.feature/config.toml`, одна команда `[verify]` с метрикой), `examples/verify/chat_api_eval.sh` (вымышленный чат-API, вопросы из `questions.tsv`, печатает `{"answered": N, "total": M}`).
 
 - [ ] **Step 1:** `feature_gate.py check-config` на `examples/sample-project` → `[]`; тесты проекта проходят; `run-verify` на подставном критерии печатает метрику.
 
-### Task 12: Документация
+### Task 11: Документация
 
 **Files:** Create `README.md` (русский, затем английский, разделы спеки §9), `docs/config.md` (все поля Task 1 с примерами), `docs/vendors.md` (таблица спеки §3 со ссылками и датами), `docs/how-it-works.md` (схема фаз mermaid, кто где решает, модели и судьи).
 
-- [ ] **Step 1:** каждая команда установки и запуска в README выполнена хотя бы раз в Task 8–10, 14 (или помечена «не проверено»); разделы README на двух языках совпадают по составу. Шаблоны команд судьи для Claude Code и Antigravity, до которых не дошёл Task 14, помечаются в `docs/vendors.md` «не проверено».
+- [ ] **Step 1:** каждая команда установки и запуска в README выполнена хотя бы раз в Task 8–9, 13 (или помечена «не проверено»); разделы README на двух языках совпадают по составу. Шаблоны команд судьи для Claude Code, до которых не дошёл Task 13, помечаются в `docs/vendors.md` «не проверено».
 - [ ] **Step 2:** раздел README «Безопасность» (ru и en) прямо говорит: охранник защищает `.feature/config.toml`, `*.approved.md`, `preexisting.txt` от записи только инструментами записи; команды Bash (`echo >`, `sed -i`, `tee`) не перехватываются; хук — страховка, а не граница безопасности.
 
-### Task 13: Проверка чистоты и CI
+### Task 12: Проверка чистоты и CI
 
 **Files:** Create `scripts/check_clean.py`, `.github/workflows/ci.yml`, `core/tests/test_check_clean.py`.
 
 **Interfaces — Produces:** `scan(root: Path, words: list[str]) -> list[str]` (`файл:строка: слово`, регистр игнорируется, `.git/` пропускается); CLI `check_clean.py --denylist FILE [--root DIR]`, код 1 при находках.
 
 - [ ] **Step 1–4:** RED → Implement → GREEN (`test_scan_finds_word_case_insensitive`, `test_git_dir_skipped`).
-- [ ] **Step 5:** CI: pytest, `build_adapters.py check`, проверка JSON-манифестов (`claude plugin validate` и `agy plugin validate` в CI не запускаются — CLI в раннере нет, только локально перед публикацией); `check_clean` в CI не запускается (списка там нет) — только локально, перед каждым коммитом и публикацией.
+- [ ] **Step 5:** CI: pytest, `build_adapters.py check`, проверка JSON-манифестов (`claude plugin validate` в CI не запускается — CLI в раннере нет, только локально перед публикацией); `check_clean` в CI не запускается (списка там нет) — только локально, перед каждым коммитом и публикацией.
 - [ ] **Step 6:** `check_clean.py --denylist ~/.config/feature-workflow/denylist.txt` по всему репо → пусто. Список составляет автор; агент предлагает черновик в чате, в файл не пишет.
 
-### Task 14: Сквозная проверка (Claude Code и Codex)
+### Task 13: Сквозная проверка (Claude Code и Codex)
 
 - [ ] **Step 1:** Сценарий в `docs/e2e.md`: на `examples/sample-project` — `/feature-init` → `/feature add-health-metric` (короткий цикл) → отчёт; ожидаемые ответы и остановки по шагам.
 - [ ] **Step 2: Claude Code.** Автор ставит плагин из локальной папки и проходит сценарий. Каждое расхождение — запись в журнале и исправление (TDD, если это код).

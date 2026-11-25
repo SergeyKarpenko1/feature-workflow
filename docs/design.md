@@ -16,14 +16,14 @@
 
 **Цели:**
 - Работает в любом проекте после одной настройки `/feature-init`.
-- Работает в трёх агентах с первой версии: Claude Code, Codex CLI, Antigravity CLI.
+- Работает в двух агентах с первой версии: Claude Code и Codex CLI.
 - Ядро не зависит от вендора; адаптеры тонкие.
 - Судья может быть моделью другого вендора (код пишет один, проверяет другой).
 - Установка одной-двумя командами из GitHub для каждого агента.
 - README на русском, ниже — полная английская версия.
 
 **Не-цели (v1):**
-- Gemini CLI (только корпоративные и API-пользователи после 2026-06-18) — позже, адаптер почти совпадает с Antigravity.
+- Antigravity CLI, Gemini CLI — не нужны.
 - Cursor, Aider, OpenCode и прочие — позже.
 - Мутационное тестирование, CRAP, DAST — как гейты не входят; можно подключить через команды конфига.
 - Веб-интерфейс, сервер, телеметрия.
@@ -36,18 +36,18 @@
 
 ## 3. Что умеют агенты (проверено по документации 2026-11-02)
 
-| | Claude Code | Codex CLI (0.166) | Antigravity CLI (1.4.x) |
-|---|---|---|---|
-| Инструкции проекта | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` / `GEMINI.md`, `.agents/rules/*.md` |
-| Скиллы `SKILL.md` | `skills/` плагина, `.claude/skills/` | `.agents/skills/` | `.agents/skills/`, скилл = команда `/<имя>` |
-| Переносимые поля frontmatter | `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` | `name`, `description` | `description` (обяз.), `name` |
-| Сабагенты | `agents/*.md`, `model` (алиас), `tools` | `.codex/agents/*.toml`, `model`; песочница наследуется от родителя | `.agents/agents/*.md`, `model: flash/pro/inherit`, `tools` (белый список) |
-| Хук перед инструментом | `PreToolUse`; запрет: exit 2 или JSON `hookSpecificOutput.permissionDecision: "deny"` | `PreToolUse`; те же exit 2 / JSON | `PreToolUse`; запрет только JSON `{"decision":"deny","reason":…}` |
-| Судья без интерфейса | `claude -p --bare --model … --tools "Read,Grep,Glob" --json-schema …` → `structured_output` | `codex exec -m … -s read-only --output-schema f -o out` | `agy -p --model … --json-schema … --output-format json --agent <без записи>` → `structured_output` |
-| Только чтение | `--tools` без записи | `-s read-only` (принудительно) | не принудительно: агент без инструментов записи |
-| Плагин из GitHub | `/plugin marketplace add owner/repo` → `/plugin install feature-workflow@…` | `codex plugin marketplace add owner/repo` (формат манифеста — проверить) | `agy plugin install https://github.com/owner/repo` |
-| Запрет чтения секретов | `permissions.deny` в settings — **плагин поставить не может** | профиль доступа (Beta), есть открытый баг с `cat .env` | `permissions.deny` с `read_file(...)` — шаблоны путей не подтверждены |
-
+| | Claude Code | Codex CLI (0.166) |
+|---|---|---|
+| Инструкции проекта | `CLAUDE.md` | `AGENTS.md` |
+| Скиллы `SKILL.md` | `skills/` плагина, `.claude/skills/` | `.agents/skills/` |
+| Переносимые поля frontmatter | `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools` | `name`, `description` |
+| Сабагенты | `agents/*.md`, `model` (алиас), `tools` | `.codex/agents/*.toml`, `model`; песочница наследуется от родителя |
+| Хук перед инструментом | `PreToolUse`; запрет: exit 2 или JSON `hookSpecificOutput.permissionDecision: "deny"` | `PreToolUse`; те же exit 2 / JSON |
+| Судья без интерфейса | `claude -p --bare --model … --tools "Read,Grep,Glob" --json-schema …` → `structured_output` | `codex exec -m … -s read-only --output-schema f -o out` |
+| Только чтение | `--tools` без записи | `-s read-only` (принудительно) |
+| Плагин из GitHub | `/plugin marketplace add owner/repo` → `/plugin install feature-workflow@…` | `codex plugin marketplace add owner/repo` (формат манифеста — проверить) |
+| Запрет чтения секретов | `permissions.deny` в settings — **плагин поставить не может** | профиль доступа (Beta), есть открытый баг с `cat .env` |
+||
 Источники — в `docs/vendors.md` репозитория (ссылки на официальные страницы и даты).
 
 ## 4. Устройство репозитория
@@ -60,7 +60,7 @@ feature-workflow/
       feature-init/SKILL.md     # настройка проекта
     scripts/
       feature_gate.py           # гейты, triage, снимки (stdlib, Python ≥ 3.11)
-      guard.py                  # охранник секретов, --format claude|codex|antigravity
+      guard.py                  # охранник секретов, --format claude|codex
       judge.py                  # запуск судьи по команде из конфига, разбор вердикта
     judges/
       design.md  arch.md        # промпты судей (не привязаны к вендору)
@@ -70,7 +70,6 @@ feature-workflow/
   adapters/
     claude/   .claude-plugin/plugin.json, agents/, hooks/hooks.json
     codex/    манифест плагина, hooks, agents/*.toml
-    antigravity/  plugin.json, agents/, hooks.json
   .claude-plugin/marketplace.json  # репозиторий = маркетплейс Claude Code
   examples/
     config.example.toml
@@ -104,7 +103,7 @@ Enrich → Research → Triage → Design → Acceptance → Plan → Code → Q
 Правило: судья другого класса или вендора, чем автор того, что он проверяет.
 
 ### 5.4 Охранник секретов
-`guard.py` — один скрипт для трёх агентов. Читает JSON со stdin (у Antigravity — camelCase, `toolCall{name,args}`), проверяет команду или путь по шаблонам из конфига (по умолчанию: dotenv-файлы, ключи, `printenv`/`env`, `/proc/*/environ`, `docker inspect|logs`, рекурсивный поиск по корню). Ответ — в формате агента: `--format claude|codex` → exit 2 + причина в stderr; `--format antigravity` → `{"decision":"deny","reason":…}` в stdout.
+`guard.py` — один скрипт для двух агентов. Читает JSON со stdin, проверяет команду или путь по шаблонам из конфига (по умолчанию: dotenv-файлы, ключи, `printenv`/`env`, `/proc/*/environ`, `docker inspect|logs`, рекурсивный поиск по корню). Ответ — в формате агента: `--format claude|codex` → exit 2 + причина в stderr.
 
 Запись в защищённые файлы (`.feature/config.toml`, `*.approved.md`, `preexisting.txt`) проверяется только у инструментов записи с `file_path`; команды Bash (`echo >`, `sed -i`, `tee`) не перехватываются. Хук — страховка, а не граница безопасности. README прямо говорит, что настоящий запрет — правила доступа самого агента, и `/feature-init` выдаёт их готовым блоком для вставки.
 
@@ -125,14 +124,14 @@ Enrich → Research → Triage → Design → Acceptance → Plan → Code → Q
 - `[verify]` — именованные команды проверки, на которые ссылается тест-план (`verify:<имя>`)
 - `[models]` — для своего агента: `decide` (enrich, design, acceptance, code в core), `check` (research, plan, qa-check, verify)
 - `[judges]` — `mode = native|command`, шаблоны команд для `design` и `arch`
-- `agent` — какой агент у пользователя (`claude`, `codex`, `antigravity` или другое имя); информационное поле, его пишет `/feature-init`
+- `agent` — какой агент у пользователя (`claude`, `codex` или другое имя); информационное поле, его пишет `/feature-init`
 - `[tracker]` — `kind` (имя трекера задач: `jira`, `linear`, любое другое или `none`), `task_card` (`true` — после Enrich выдавать название и описание задачи для трекера); раздел необязателен, по умолчанию `none` и `false`
 
 Тест-план ссылается на проверки из `[verify]`, а не на «ответ API» и «трейс» — это частный случай. Пример для LLM-фич — `examples/verify/chat_api_eval.sh`.
 
 ## 7. `/feature-init`
 
-1. Определяет агента по окружению; если не удалось — спрашивает (Claude Code, Codex CLI, Antigravity или другой). Для «другого» ядро работает, но хука охранника и готовых скиллов нет — init говорит об этом прямо.
+1. Определяет агента по окружению; если не удалось — спрашивает (Claude Code, Codex CLI или другой). Для «другого» ядро работает, но хука охранника и готовых скиллов нет — init говорит об этом прямо.
 2. Изучает проект: менеджер пакетов, команды тестов и линтера, CI, Dockerfile/compose, файлы инструкций и `docs/`, где лежат миграции, публичные схемы, конфиги деплоя, файлы секретов.
 3. Показывает найденное по разделам конфига и задаёт вопросы только о том, чего не нашёл (типы доменов, команды проверки, что считать опасными зонами). Отдельно спрашивает, какой трекер задач использует человек (Jira, Linear, GitHub Issues, другой или никакого); если трекер есть — нужна ли карточка задачи (название и описание) перед каждой фичей.
 4. Прогоняет тесты один раз и предлагает записать текущие падения как baseline.
@@ -142,13 +141,13 @@ Enrich → Research → Triage → Design → Acceptance → Plan → Code → Q
 
 ## 8. Адаптеры
 
-| | Claude Code | Codex CLI | Antigravity CLI |
-|---|---|---|---|
-| Скиллы | `skills/` плагина, пути через `${CLAUDE_PLUGIN_ROOT}` | плагин; без плагина — `.agents/skills/` | плагин; без плагина — `.agents/skills/` |
-| Судьи `native` | `agents/design-judge.md`, `arch-judge.md`, модель — параметром вызова | `agents/*.toml`; read-only не принудительный → по умолчанию `command` с `codex exec -s read-only` | `agents/*.md` с `tools` без записи, `model: pro/flash` |
-| Хук | `hooks/hooks.json` → `guard.py --format claude` | `hooks/hooks.json` → `--format codex` | `hooks.json` → `--format antigravity` |
-| Модели по умолчанию | `decide=opus`, `check=sonnet` | из `codex` конфига пользователя, спрашивает init | `decide=pro`, `check=flash` |
-| Установка | `/plugin marketplace add SergeyKarpenko1/feature-workflow`, `/plugin install feature-workflow@feature-workflow` | `codex plugin marketplace add SergeyKarpenko1/feature-workflow` + `/plugins` | `agy plugin install https://github.com/SergeyKarpenko1/feature-workflow` |
+| | Claude Code | Codex CLI |
+|---|---|---|
+| Скиллы | `skills/` плагина, пути через `${CLAUDE_PLUGIN_ROOT}` | плагин; без плагина — `.agents/skills/` |
+| Судьи `native` | `agents/design-judge.md`, `arch-judge.md`, модель — параметром вызова | `agents/*.toml`; read-only не принудительный → по умолчанию `command` с `codex exec -s read-only` |
+| Хук | `hooks/hooks.json` → `guard.py --format claude` | `hooks/hooks.json` → `--format codex` |
+| Модели по умолчанию | `decide=opus`, `check=sonnet` | из `codex` конфига пользователя, спрашивает init |
+| Установка | `/plugin marketplace add SergeyKarpenko1/feature-workflow`, `/plugin install feature-workflow@feature-workflow` | `codex plugin marketplace add SergeyKarpenko1/feature-workflow` + `/plugins` |
 
 Перед реализацией адаптера Codex прочитать спецификацию манифеста плагина (в исследовании не проверена).
 
@@ -175,10 +174,10 @@ Enrich → Research → Triage → Design → Acceptance → Plan → Code → Q
 
 ## 11. Проверка
 
-- `core/tests/` — pytest на гейты, triage по конфигу, охранник во всех трёх форматах, `judge.py` с подставным CLI.
-- `claude plugin validate`, `agy plugin validate` — локально перед публикацией (CLI в CI-раннере недоступны); в CI — pytest, проверка сборки адаптеров и JSON-манифестов.
+- `core/tests/` — pytest на гейты, triage по конфигу, охранник в обоих форматах, `judge.py` с подставным CLI.
+- `claude plugin validate` — локально перед публикацией (CLI в CI-раннере недоступен); в CI — pytest, проверка сборки адаптеров и JSON-манифестов.
 - Сквозная проверка на учебном проекте в `examples/sample-project/`: init → короткий цикл до Verify, плюс Codex как внешний судья (`codex exec -s read-only`).
-- **Условие выпуска v1 (решение автора):** сквозная проверка пройдена в **Claude Code и Codex CLI**. Адаптер Antigravity собирается и проходит `agy plugin validate`, но сквозным прогоном не проверяется и выходит с пометкой «экспериментальный» в README и манифесте.
+- **Условие выпуска v1 (решение автора):** сквозная проверка пройдена в **Claude Code и Codex CLI**.
 - Пилот: одна реальная задача в стороннем проекте автора через плагин (не через локальную версию).
 
 ## 12. Публикация и отношение к локальной версии
@@ -191,14 +190,13 @@ Enrich → Research → Triage → Design → Acceptance → Plan → Code → Q
 - Конфиг в TOML, не YAML: `tomllib` в stdlib, Python ≥ 3.11.
 - Ядро + сборка в адаптеры с проверкой в CI вместо симлинков (симлинки ломаются при установке плагинов).
 - Codex: судья по умолчанию `command` с `codex exec -s read-only` — у сабагентов нет своей песочницы.
-- Antigravity: охранник отвечает JSON, а не кодом выхода 2 (код 2 не документирован).
 - Тест-план ссылается на именованные команды `[verify]` вместо `auto:response` / `auto:trace`.
 - Модели по умолчанию — табл. §8; пользователь меняет в конфиге.
 
 - **Исходная локальная версия — функциональная спецификация.** Исполнитель читает её (скилл, гейт, шаблоны, судьи, спеку процесса), чтобы перенести поведение: разделы артефактов, проверки гейтов, правила эскалации. Код и тексты пишет заново; ни одна строка, путь, имя или доменный пример оттуда не попадает в репозиторий. Проверка §10 — после каждой задачи, не только перед публикацией.
 - **Verify в общем виде.** Команда из `[verify]` сообщает результат кодом выхода (0 — прошло) и по желанию печатает в stdout одну строку JSON с метриками `{"<metric>": <число>}`. Критерий тест-плана: `| id | что | verify:<имя> | порог | повторы |`; порог — либо `pass`, либо выражение над метрикой (`hit_rate >= 0.9`). Гейт `verify` запускает команду `повторы` раз и сравнивает. Снимок «до» (запуск тех же команд до первой правки, без флагов фичи) остаётся в ядре и включается полем `## Baseline`. `questions.tsv` и контрольный вопрос — только в примере для LLM-фич (`examples/verify/`), не в ядре.
 - **Вспомогательные скиллы встроены.** Интервью фазы Enrich и дамп сигнатур фазы Research описаны прямо в `feature/SKILL.md` (по одному разделу), внешних скиллов плагин не требует. Коммит в Review — «как вы привыкли», без привязки к скиллу.
-- **Защита правил от правки агентом.** `guard.py` запрещает инструменты записи для `.feature/config.toml`, `*.approved.md` и `preexisting.txt` во всех трёх агентах; меняет их только человек или подкоманды гейта.
+- **Защита правил от правки агентом.** `guard.py` запрещает инструменты записи для `.feature/config.toml`, `*.approved.md` и `preexisting.txt` в обоих агентах; меняет их только человек или подкоманды гейта.
 - **Плагин пишет в репозиторий пользователя только** `.feature/config.toml` и папки фич. Если что-то нельзя поставить плагином, v1 этого не обещает: для Codex судья по умолчанию `command` через `codex exec`, отдельные файлы агентов не нужны.
 
 - **Счётчик провалов подряд живёт в фиче.** Строка `failures: <phase>=<n>` в `STATE.md` фичи; гейт увеличивает её при провале, сбрасывает при успехе, при `n ≥ 3` возвращает код 2 (эскалация).
