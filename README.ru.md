@@ -28,18 +28,28 @@ flowchart LR
 | Критерии приёмки подгоняют под результат | Утверждённые критерии снимаются снимком; смена порога роняет гейт QA-check |
 | Мелкая задача тонет в церемониях | Triage выбирает **короткий цикл** (без Design/Plan/QA-check), если правка маленькая и безопасная |
 
-## Установка (Claude Code)
+## Установка
 
-```
-/plugin marketplace add SergeyKarpenko1/feature-workflow
-/plugin install feature-workflow@feature-workflow
+| Агент | Статус | Установка |
+|---|---|---|
+| **Claude Code** | работает | `/plugin marketplace add SergeyKarpenko1/feature-workflow`, затем `/plugin install feature-workflow@feature-workflow` |
+| **Codex CLI** | адаптер написан, **сквозно ещё не проверен** | ниже |
+| Antigravity CLI, другие | не написано | гейты и шаблоны работают везде; скилл идёт в *inline-режиме* (без независимого судьи) |
+
+**Codex CLI** (проверено лишь то, что установленный `codex 0.139` принимает эти команды, а файлы разбираются):
+
+```bash
+codex plugin marketplace add SergeyKarpenko1/feature-workflow   # Codex читает marketplace.json в стиле Claude
+codex plugin add feature-workflow
+git clone https://github.com/SergeyKarpenko1/feature-workflow /tmp/fw
+python3 /tmp/fw/scripts/install_codex_agents.py                  # два судьи -> ./.codex/agents/
 ```
 
-Дальше в проекте: `/feature my-feature`. При первом запуске скилл задаёт пять коротких вопросов (агент, трекер, нужна ли карточка для трекера, базовая ветка, команды проверок) и пишет `.feature/config.toml` — только после вашего «да».
+Плагины Codex несут скиллы, но не кастомных агентов, поэтому нужен отдельный шаг. Судьи Codex наследуют права родителя: «только чтение» держится на инструкции. Для жёсткой гарантии запускайте судью через `codex exec -s read-only`.
+
+Дальше в проекте: `/feature my-feature` (Codex: назовите скилл `feature`). При первом запуске скилл задаёт несколько коротких вопросов (агент, трекер, нужна ли карточка для трекера, базовая ветка, команды проверок, две модели) и пишет `.feature/config.toml` — только после вашего «да».
 
 Нужно: Python ≥ 3.11 (`tomllib`), `git`.
-
-> Статус: **v0.1, только Claude Code.** Адаптеры для Codex CLI и Antigravity спроектированы (см. [`docs/design.md`](docs/design.md)), но ещё не написаны.
 
 ## Фазы
 
@@ -70,6 +80,10 @@ features_dir = "docs/features"
 kind = "jira"        # или "none"
 task_card = true     # после Enrich выдать название и описание задачи для трекера
 
+[models]
+strong = "opus"    # решающие фазы; Codex: любая ваша модель
+fast = "sonnet"     # остальное; судья всегда другого класса
+
 [checks]
 commands = ["pytest -q", "ruff check ."]   # любые shell-команды; все должны вернуть 0
 known_failures = ""                        # допустимые падения pytest (baseline)
@@ -90,18 +104,20 @@ rules = [{ reason = "затрагивает контракт", pattern = "^migra
 
 ```
 .claude-plugin/        plugin.json, marketplace.json
-skills/feature/        SKILL.md, scripts/feature_gate.py, templates/
-agents/                design-judge.md, arch-judge.md
+skills/feature/        SKILL.md (не привязан к агенту), scripts/feature_gate.py, templates/
+judges/                единственный источник двух промптов судей
+agents/                генерируется для Claude Code     (scripts/build_adapters.py)
+adapters/codex/agents/ генерируется для Codex CLI       (копирует scripts/install_codex_agents.py)
 examples/              config.example.toml
-tests/                 тесты гейтов (pytest)
+tests/                 тесты гейтов и адаптеров (pytest)
 docs/                  дизайн и план реализации универсальной версии
 ```
 
-Тесты: `python3 -m pytest tests`.
+Промпты судей правьте только в `judges/`, затем `python3 scripts/build_adapters.py`. Тесты: `python3 -m pytest tests`.
 
 ## Планы
 
-См. [`docs/plan-v1.md`](docs/plan-v1.md): адаптеры Codex CLI и Antigravity, судья командой из конфига (модель другого *вендора*), хук-охранник записи, шаблоны артефактов ru/en.
+См. [`docs/plan-v1.md`](docs/plan-v1.md): адаптер Antigravity, судья командой из конфига (модель другого *вендора*), хук-охранник записи, шаблоны артефактов ru/en.
 
 ## Лицензия
 

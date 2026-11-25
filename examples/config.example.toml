@@ -1,13 +1,17 @@
 # Copy to <your project>/.feature/config.toml (the /feature skill writes it for you on first run).
 
 language = "en"             # language of the task card
-agent = "claude"
+agent = "claude"             # claude | codex | other (inline mode)
 base_branch = "main"        # diffs and the scope check are taken against this branch
 features_dir = "docs/features"
 
 [tracker]
 kind = "none"               # free name (jira, linear, github...) or "none"
 task_card = false           # true: print a title + description for the tracker after Enrich
+
+[models]                    # the two model classes; the judge always uses the other class than the author
+strong = "opus"             # Codex: a model name you have, e.g. your top one
+fast = "sonnet"
 
 [checks]                    # run by the code gate, in this order, from the project root
 commands = ["pytest -q"]    # any shell commands; all must exit 0

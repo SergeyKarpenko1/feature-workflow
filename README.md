@@ -28,18 +28,28 @@ Yellow = a human decision. Every arrow passes a gate: exit `0` go on, `1` the ag
 | Acceptance criteria drift to fit the result | The approved criteria are snapshotted; changing a threshold fails the QA-check gate |
 | Small tasks drown in ceremony | Triage picks a **short cycle** (no Design/Plan/QA-check) when the change is small and safe |
 
-## Install (Claude Code)
+## Install
 
-```
-/plugin marketplace add SergeyKarpenko1/feature-workflow
-/plugin install feature-workflow@feature-workflow
+| Agent | Status | Install |
+|---|---|---|
+| **Claude Code** | works | `/plugin marketplace add SergeyKarpenko1/feature-workflow` then `/plugin install feature-workflow@feature-workflow` |
+| **Codex CLI** | adapter built, **not yet tested end to end** | see below |
+| Antigravity CLI, others | not built | gates and templates work anywhere; the skill runs in *inline mode* (no independent judge) |
+
+**Codex CLI** (tested only as far as the installed `codex 0.139` CLI accepts these commands and the files parse):
+
+```bash
+codex plugin marketplace add SergeyKarpenko1/feature-workflow   # Codex reads the Claude-style marketplace.json
+codex plugin add feature-workflow
+git clone https://github.com/SergeyKarpenko1/feature-workflow /tmp/fw
+python3 /tmp/fw/scripts/install_codex_agents.py                  # the two judges -> ./.codex/agents/
 ```
 
-Then in your project: `/feature my-feature`. On the first run the skill asks five short questions (agent, tracker, whether to print a tracker card, base branch, check commands) and writes `.feature/config.toml` — only after you say yes.
+Codex plugins carry skills, not custom agents, hence the extra step. Codex judges inherit the parent's permissions, so they are read-only by instruction; for a hard guarantee run a judge with `codex exec -s read-only`.
+
+Then in your project: `/feature my-feature` (Codex: mention the `feature` skill). On the first run the skill asks a few short questions (agent, tracker, whether to print a tracker card, base branch, check commands, the two models) and writes `.feature/config.toml` — only after you say yes.
 
 Requirements: Python ≥ 3.11 (`tomllib`), `git`.
-
-> Status: **v0.1, Claude Code only.** Codex CLI and Antigravity adapters are designed (see [`docs/design.md`](docs/design.md)) but not built yet.
 
 ## The phases
 
@@ -70,6 +80,10 @@ features_dir = "docs/features"
 kind = "jira"        # or "none"
 task_card = true     # print title + description for the tracker after Enrich
 
+[models]
+strong = "opus"    # deciding phases; Codex: any model you have
+fast = "sonnet"     # the rest; a judge always uses the other class
+
 [checks]
 commands = ["pytest -q", "ruff check ."]   # any shell commands; all must exit 0
 known_failures = ""                        # tolerated pytest failures (baseline)
@@ -92,18 +106,20 @@ Be clear about the limits:
 
 ```
 .claude-plugin/        plugin.json, marketplace.json
-skills/feature/        SKILL.md, scripts/feature_gate.py, templates/
-agents/                design-judge.md, arch-judge.md
+skills/feature/        SKILL.md (agent-neutral), scripts/feature_gate.py, templates/
+judges/                the single source of the two judge prompts
+agents/                generated for Claude Code        (scripts/build_adapters.py)
+adapters/codex/agents/ generated for Codex CLI          (scripts/install_codex_agents.py copies them)
 examples/              config.example.toml
-tests/                 gate tests (pytest)
+tests/                 gate and adapter tests (pytest)
 docs/                  design and implementation plan of the universal version
 ```
 
-Run the tests: `python3 -m pytest tests`.
+Edit judge prompts only in `judges/`, then run `python3 scripts/build_adapters.py`. Tests: `python3 -m pytest tests`.
 
 ## Roadmap
 
-See [`docs/plan-v1.md`](docs/plan-v1.md): Codex CLI and Antigravity adapters, config-driven judge command (a judge from another *vendor*), a write-guard hook, ru/en artifact templates.
+See [`docs/plan-v1.md`](docs/plan-v1.md): Antigravity adapter, a config-driven judge command (a judge from another *vendor*), a write-guard hook, ru/en artifact templates.
 
 ## License
 
