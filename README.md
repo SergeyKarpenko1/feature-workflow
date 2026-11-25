@@ -34,7 +34,7 @@ Yellow = a human decision. Every arrow passes a gate: exit `0` go on, `1` the ag
 |---|---|---|
 | **Claude Code** | works | `/plugin marketplace add SergeyKarpenko1/feature-workflow` then `/plugin install feature-workflow@feature-workflow` |
 | **Codex CLI** | adapter built, **not yet tested end to end** | see below |
-| Antigravity CLI, others | not built | gates and templates work anywhere; the skill runs in *inline mode* (no independent judge) |
+| Other agents | not built | gates and templates work anywhere; the skill runs in *inline mode* (no independent judge) |
 
 **Codex CLI** (tested only as far as the installed `codex 0.139` CLI accepts these commands and the files parse):
 
@@ -119,7 +119,7 @@ Edit judge prompts only in `judges/`, then run `python3 scripts/build_adapters.p
 
 ## Roadmap
 
-See [`docs/plan-v1.md`](docs/plan-v1.md): Antigravity adapter, a config-driven judge command (a judge from another *vendor*), a write-guard hook, ru/en artifact templates.
+See [`docs/plan-v1.md`](docs/plan-v1.md): a config-driven judge command (a judge from another *vendor*), a write-guard hook, ru/en artifact templates.
 
 ## License
 
